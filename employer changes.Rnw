@@ -1,0 +1,381 @@
+\documentclass{article}
+\usepackage{graphicx} 
+\usepackage{amsmath}
+\usepackage{float}
+\usepackage{setspace}
+\onehalfspacing
+
+\title{Case Study 3}
+\author{Bischoy Bert}
+\date{December 2025}
+
+
+
+\begin{document}
+
+\maketitle
+
+<<include=FALSE>>=
+library(tidyverse)
+library(readr)
+library(car)
+library(AICcmodavg)
+@
+
+\section{Introduction}
+In this case study, we analyze labor market data for Austria from 1986-1998. Particularly, we are interested in how often Austrian workers change employers and what factors influence the decision to change employer. To conduct the analysis we will be using the statistical programming language \texttt{R} and aside from its base functions, the packages \textit{tidyverse}, \textit{readr}, \textit{car}, and \textit{AICcmodavg}.
+
+\section{Data Description}
+The raw dataset, containing our data, \texttt{change.csv}, which was kindly provided by Dr. Malsiner-Walli, is made up of the following variables:
+\begin{itemize}
+    \item \texttt{nchange}: Counts of how many changes of employer occurred from 1986 to 1998
+    \item \texttt{gender}: 1 for women, 0 for men
+    \item \texttt{age}: Age in 1986 (in years)
+    \item \texttt{periodsincome}: Number of years in which a positive income was registered
+    \item \texttt{medianwage}: Wage categories (5 categories based on annual income quintiles: 1 = lowest 20\%, 5 = highest 20\%)
+    \item \texttt{occupation}:
+    1 for white-collar workers, 0 for blue-collar workers
+\end{itemize}
+
+We shall reference the dataset with \texttt{data}. Since we are dealing with categorical data in \texttt{gender}, \texttt{occupation} and \texttt{medianwage}, the latter of which is split into five categories, we need to manipulate the raw data in such a way, that we are able to conduct a meaningful analysis. To do this, we redefine these three variables as \textit{factors} and set a reference level for \texttt{medianwage}. We set the reference level equal to 1, i.e. the lowest income quintile, which will serve as the baseline against which the effects of all other wage categories (2 through 5) are compared in our regression models, which will follow.
+
+
+<<message=FALSE, warning=FALSE>>=
+raw_data <- readr::read_csv("change.csv")
+
+data <- raw_data |> 
+  mutate(gender = as.factor(gender),
+         occupation = as.factor(occupation),
+         medianwage = as.factor(medianwage),
+         medianwage = relevel(medianwage, ref = "1"))
+@
+We could have hardcoded the different levels as dummy variables against the reference variable \texttt{medianwage = 1} by creating a separate binary (0,1) variable for every income level except 1 (our reference). These coefficients would capture the difference in expected \texttt{nchange} compared to the baseline level 1, whose effect is captured by the intercept. However, using \textit{as.factor()} and \textit{relevel()} in \texttt{R}, the software automatically handles the dummy-coding, saving manual coding effort and preventing errors.
+
+\section{Descriptive Statistics}
+\subsection{Numeric Variables}
+To get a glimpse of the distribution and key values for the numeric variables, we run the \texttt{summary()} function. This gives us a good outline of the distribution of the variables \texttt{nchange}, \texttt{age}, and \texttt{periodsincome}
+<<>>=
+data |> 
+select(nchange, age, periodsincome) |> 
+summary()
+@
+Next, we provide some graphics to better illustrate the relationships between \texttt{age} and \texttt{nchange} and \texttt{periodsincome} and \texttt{nchange}. Note that we use the function \textit{geom\_jitter()} to create the scatterplots. We need to use this function because all variables in \texttt{data} are discrete count variables which results in heavy overplotting, where many data points accumulate on the same integer coordinates, which makes it impossible to see the true density and distribution of the data. \textit{geom\_jitter()} adds a small amount of randomness to the point-positions which makes it possible to see the true concentration at each integer level.
+
+<<plot_nchange, message=FALSE, warning=FALSE, out.width="75%", fig.align="center", fig.cap="Distribution of Employer Changes">>=
+plot_nchange <- data |> 
+  ggplot(aes(x = nchange)) +
+  geom_histogram() +
+  scale_x_continuous(breaks = c(0:9))
+
+plot_nchange
+@
+
+<<plot_age, message=FALSE, warning=FALSE, out.width="75%", fig.align='center', fig.cap="Employer Changes by Age">>=
+plot_age <- data |> 
+  ggplot(aes(x = age, y = nchange)) +
+  geom_jitter(width = 0.2, height = 0.1, size = 0.2) +
+  geom_smooth() +
+  scale_y_continuous(breaks = c(0:9))
+
+plot_age
+@
+
+<<plot_periodsincome, message=FALSE, warning=FALSE, out.width="75%", fig.align='center', fig.cap="Employer Changes by Years of Positive Income">>=
+plot_periodsincome <- data |>
+  ggplot(aes(x = periodsincome, y = nchange)) +
+  geom_jitter(width = 0.2, height = 0.1, size = 0.2) +
+  geom_smooth() +
+  scale_x_continuous(breaks = c(1:13)) +
+  scale_y_continuous(breaks = c(0:9))
+
+plot_periodsincome
+@
+
+\subsection{Factor Variables}
+We are now visualizing the factor variables \texttt{gender}, \texttt{occupation}, and \texttt{medianwage} against \texttt{nchange}, again, using jitter plots to show the density across categories. Note that we are not using \textit{geom\_smooth()} here because \texttt{R} requires a continuous or sequential numeric axis to calculate a meaningful trend line, which the discrete, non-sequential levels of a factor variable do not provide. Instead, the focus is on showing the distribution of \texttt{nchange} across the different groups.
+
+<<plot_gender, message=FALSE, warning=FALSE, out.width="75%", fig.align='center', fig.cap= "Employer Changes by Gender">>=
+plot_gender <- data |> 
+  ggplot(aes(x = gender, y = nchange)) +
+  geom_jitter(height = 0.2, width = 0.1, size = 0.2) +
+  scale_y_continuous(breaks = c(0:9))
+
+plot_gender
+@
+
+<<plot_occupation, message=FALSE, warning=FALSE, out.width="75%", fig.align='center', fig.cap="Employer Changes by Occupation">>=
+plot_occupation <- data |> 
+  ggplot(aes(x = occupation, y = nchange)) +
+  geom_jitter(height = 0.2, width = 0.1, size = 0.01) +
+  scale_y_continuous(breaks = c(0:9))
+
+plot_occupation
+@
+
+<<plot_medianwage, message=FALSE, warning=FALSE, out.width="75%", fig.align='center', fig.cap="Employer Changes by Median Wage">>=
+plot_medianwage <- data |> 
+  ggplot(aes(x = medianwage, y = nchange)) +
+  geom_jitter(height = 0.2, width = 0.1, size = 0.01) +
+  scale_y_continuous(breaks = c(0:9))
+
+plot_medianwage
+@
+
+\subsection{Linear Regression}
+In this section, we shall run a linear regression model, which we denote as \texttt{lm\_1}, to estimate the relationship between the count of employer changes \texttt{nchange} and the five predictor variables \texttt{age}, \texttt{gender}, \texttt{medianwage}, \texttt{occupation}, and \texttt{periodsincome}. The model is specified using the \textit{lm()} function in \texttt{R}, and the results will establish the effects of all variables, with the effects of the categorical variables measured relative to their respective reference levels which are defined as follows:
+\begin{itemize}
+\item For \texttt{gender}: \texttt{0} (men)
+\item For \texttt{occupation}: \texttt{0} (blue-collar)
+\item For \texttt{medianwage}: \texttt{1} (first income quintile)
+\end{itemize}
+
+<<>>=
+lm_1 <- lm(data = data, nchange ~ age + gender + medianwage +
+             occupation + periodsincome)
+
+summary(lm_1)
+@
+
+\subsubsection{Interpretation}
+\textbf{Model Fit:}
+The model is statistically significant overall (F-statistic p-value $< 2.2e-16$). The multiple R-squared of $R^2$ = 0.0706 tells us that the model only explains about 7\% of the variance in \texttt{nchange}.
+The estimated coefficients provide the following insights into the factors influencing employer changes:
+\begin{itemize}
+    \item \textbf{Age:} The coefficient for $\texttt{age}$ is $-0.0276$ ($p < 0.001$), indicating that older individuals are significantly less likely to change employers. Specifically, for every one-year increase in age (in 1986), the expected number of employer changes ($\texttt{nchange}$) decreases by 0.0276, assuming all other factors in the model are held constant.
+    \item \textbf{Gender:} The coefficient for \texttt{gender1} is $-0.2417$ ($p < 0.001$), indicating that, ceteris paribus, women change employers significantly less often than men (the reference group). Conversely, men change employers significantly more often than women.
+
+    \item \textbf{Median Wage:} The relationship between income and employer changes is more complicated but generally negative for higher income quintiles. Compared to the lowest wage quintile (the reference group):
+    \begin{itemize}
+        \item \texttt{medianwage2} (wage quintile 2) shows no significant difference ($p = 0.280457$).
+        \item \texttt{medianwage3, medianwage4, medianwage5} (quintiles 3, 4, and 5) show significant negative coefficients: $-0.214844$ ($p < 0.05$), $-0.369697$ ($p < 0.001$), and $-0.362804$ ($p < 0.1$) respectively.
+    \end{itemize}
+    This indicates that low-income individuals (in the bottom 40\%) change employers significantly more often than higher-income individuals (upper 60\%).
+    
+    \item \textbf{Occupation:} The coefficient for \texttt{occupation1} is $-0.210958$ ($p < 0.001$). This suggests that white-collar workers change employers significantly less often than blue-collar workers (the reference group). Consequently, blue-collar workers change employers more frequently.
+    
+    \item \textbf{Years of Positive Income:} The coefficient for \texttt{periodsincome} is $-0.031467$ ($p < 0.001$). This suggests that individuals with a more consistent history of positive income change employers significantly less often. Specifically, for every one-year increase in the number of years a person had positive income, the expected number of employer changes ($\texttt{nchange}$) decreases by 0.031467, all other variables held constant.
+\end{itemize} 
+
+\subsection{Hypothesis Testing}
+In this section we shall test the following two hypotheses:
+\begin{enumerate}
+    \item "The effect of income is the same in the two highest wage categories."
+    \item "The effect of income is the same in the two lowest wage categories."
+\end{enumerate}
+\textbf{1.}
+To test whether the effect of income is the same in the two highest wage categories, we need to assess whether the coefficients for the 4th and 5th wage quintiles are statistically different from each other. Specifically, we test the null hypothesis $H_0: \beta_{medianwage4} = \beta_{medianwage5}$. We perform this test using the \textit{linearHypothesis()} function from the \textit{car} package in \texttt{R}.
+
+<<size='footnotesize'>>=
+linearHypothesis(lm_1, c("medianwage4 = medianwage5"))
+@
+
+The resulting F-statistic is $0.0055$ with a p-value of $0.9411$. Since the p-value is significantly larger than $0.05$, we fail to reject the null hypothesis. We conclude that there is no statistically significant difference in the effect of income on employer changes between the two highest wage categories.
+\hfill\\\\
+\textbf{2.}
+To test whether the effect of income is the same in the two lowest wage categories, we must compare the second lowest quintile \texttt{medianwage2} against the lowest quintile \texttt{medianwage1}. Recall that our model uses the lowest quintile as the reference level. Therefore, the coefficient $\beta_{medianwage2}$ already represents the difference between the second quintile and the first.
+
+Testing the hypothesis that the effects are equal $(H_0: \beta_{medianwage2} = \beta_{medianwage1})$ is mathematically equivalent to testing whether the coefficient for \texttt{medianwage2} is significantly different from zero ($H_0: \beta_{medianwage2} = 0$).
+
+Looking back at the summary of Model 1, the coefficient for \texttt{medianwage2} is $0.096$ with a p-value of $0.28$. Since $p > 0.05$, we fail to reject the null hypothesis. Thus, the effect of income on employer changes is statistically the same for the two lowest wage categories.
+
+\subsection{Quadratic Effect of periodsincome}
+In this section we will extend our first model \texttt{lm\_1} by adding a quadratic effect of the variable \texttt{periodsincome} to the model and then examining the new model, which we will call \texttt{lm\_2}.
+
+
+<<>>=
+lm_2 <- lm(data = data, nchange ~ age + gender + medianwage +
+occupation + periodsincome + I(periodsincome^2))
+
+summary(lm_2)
+@
+
+Now we shall answer the following questions:
+\begin{enumerate}
+    \item  Is the quadratic effect significant?
+    \item Is the impact of \texttt{periodsincome} on the number of changes monotone?
+    \item What is the effect on the number of changes, if a person has had an income for two additional years (all other variables are kept fixed)?
+\end{enumerate}
+\textbf{1.}
+Yes, the quadratic effect is highly significant. The coefficient for the squared term \texttt{\detokenize{I(periodsincome^2)}} is $-0.039054$ with a p-value of $< 2e-16$, far below any relevant significance threshold. This indicates that the relationship between income duration and employer changes is non-linear.
+\hfill\\\\
+\textbf{2.} The impact is not monotone. The linear term for \texttt{periodsincome} is positive ($0.601521$) while the quadratic term is negative ($-0.039405$), indicating an inverted U-shaped relationship (a downward-opening parabola). We determine the vertex of this parabola using the formula 
+$$-\frac{\beta_{periodsincome}}{2\beta_{I(periodsincome^2)}}$$ $$\text{Turning Point} = \frac{-0.601521}{2 \cdot (-0.039405)} \approx 7.63 \text{ years}$$
+Since the turning point ($7.63$) lies well within the observed data range ($1$ to $13$ years), the effect changes direction. For employees with a positive income history of less than $\approx 7.63$ years, additional years of income \textit{increase} the expected number of employer changes. For employees with more than $\approx 7.63$ years of positive income, additional years \textit{decrease} the expected number of employer changes.
+\hfill\\\\
+\textbf{3.} Since the model is non-linear, the effect of two additional years is dependent on how many positive years of income the employee has already had. We calculate this effect for a typical worker starting at the sample mean of $\approx 10$ years. If a person increases their \texttt{periodsincome} from 10 to 12 years:
+    \begin{align*}
+        \text{At 10 years: } & 0.601521 \cdot 10 - 0.039405 \cdot 10^2 = 2.074726 \\
+        \text{At 12 years: } & 0.601521 \cdot 12 - 0.039405 \cdot 12^2 = 1.543955 \\
+        \text{Difference: } & 1.543955 - 2.074726 = - 0.5307715
+    \end{align*}
+    Thus, for a worker with an average income history, two additional years reduce the expected number of employer changes by approximately $0.53$.
+
+More formally, holding all other explanatory variables constant, the expected number of employer changes can be written as a quadratic function of income duration ($x = \texttt{periodsincome}$):
+$$
+f(x) = \text{E}(\texttt{nchange} \mid x) = \beta_1 x + \beta_2 x^2
+$$
+
+where \(\beta_1\) is the estimated coefficient for \texttt{periodsincome} and \(\beta_2\) is the estimated coefficient for \verb|I(periodsincome^2)|.
+
+The marginal effect of a change in \texttt{periodsincome} is found by taking the first derivative of $f(x)$ with respect to $x$:
+$$f'(x) = \frac{d f(x)}{dx} = \beta_1 + 2\beta_2x$$
+
+The rate at which \texttt{nchange} changes in response to \texttt{periodsincome} is dependent on the current level of \texttt{periodsincome} itself (\texttt{$x$} in the above derivative).
+
+
+\subsection{Interaction Effect}
+In this section we are going to extend our previously specified model, \texttt{lm\_2} by adding another variable. This time, we add an interaction effect between \texttt{occupation} and \texttt{gender}. We shall call this new model \texttt{lm\_3}. To do so, we simply add the expression \textit{\detokenize{occupation * gender}} to the \textit{lm()} function in \texttt{R}:
+
+<<>>=
+lm_3 <- lm(data = data, nchange ~ age + gender + medianwage +
+             occupation + periodsincome + I(periodsincome^2) + 
+             (occupation * gender))
+summary(lm_3)
+@
+
+Using our new model, we shall try and answer the following questions:
+\begin{enumerate}
+    \item Is the interaction effect significant?
+    \item How do we interpret the effect of the variables \texttt{occupation} and \texttt{gender} on \texttt{nchange}?
+    \item Do women change employers more often than men? Does the answer depend on whether the woman is a blue-collar or a white-collar worker?
+\end{enumerate}
+\hfill\\\\
+\textbf{1.}
+\hfill
+Yes, the interaction effect is statistically significant. The coefficient for the interaction term \texttt{gender1:occupation1} is $0.246230$ ($p<0.05$).
+\hfill\\\\
+\textbf{2.}
+\hfill
+Since the interaction effect is statistically significant for our purposes, the effects of \texttt{gender1} and \texttt{occupation1} must be conditional on the other variable being at its reference level (0 for both variables):
+\begin{itemize}
+    \item \textbf{Intercept:} Expected \texttt{nchange} for a blue-collar man in the lowest income quintile, holding all other numeric variables at zero ($0.7821988$).
+    \item \textbf{gender1:} The difference in expected \texttt{nchange} between blue-collar women and blue-collar men ($-0.411302$).
+    \item \textbf{occupation1:} The difference in expected \texttt{nchange} between white-collar men and blue-collar men ($-0.316108$).
+    \item \textbf{gender1:occupation1:} The additional effect applied when a worker is both female and white-collar ($0.246230$).
+\end{itemize}
+\hfill\\\\
+\noindent
+\textbf{3.}
+Since we established a statistically significant interaction term, the answer to the question whether or not women change employers more often than men, does depend on $\texttt{occupation}$, i.e., whether or not the worker is blue-collar ($\texttt{occupation}=0$) or white-collar ($\texttt{occupation}=1$).We calculate the difference in the expected number of employer changes ($\texttt{nchange}$) between women ($\texttt{gender}=1$) and men ($\texttt{gender}=0$) for each occupational group. The relevant coefficients are: $$\beta_{\text{gender1}} = -0.411302$$ $$\beta_{\text{gender1:occupation1}} = 0.2462301$$
+
+\begin{itemize}
+    \item \textbf{occupation = 0:} The effect is only given by \texttt{gender1} $$\Delta \texttt{nchange}_{\text{Blue-Collar}} = \beta_{\text{gender1}} = -0.411302$$ For blue-collar workers, women are expected to change employers less often than men, by 0.411302.
+    \item \textbf{occupation = 1:} The effect is given by the sum of the main effect and the interaction effect $$\Delta \texttt{nchange}_{\text{White-Collar}} = \beta_{\text{gender1}} + \beta_{\text{gender1:occupation1}}$$
+    $$-0.411302 + 0.246230 = -0.165072$$
+
+    For white-collar workers, women are still expected to change employers less often than men, but the difference is smaller than for blue-collar workers.
+\end{itemize}
+The overall finding is that women change employers less often than men in both occupations, but that there is also a significant difference in magnitude between occupations, i.e. the disparity between men and women is less severe for white-collar workers than it is for blue-collar workers.
+
+\subsection{Prediction}
+In this section we will attempt to predict the number of employer changes (\textbf{nchange}) using our latest model, \texttt{lm\_3}, for a \textbf{blue-collar woman} who was \textbf{35 years old} in 1986, had a \textbf{positive income in 11 years} on the cut-off date and the median of those incomes was in the \textbf{second-lowest wage category}. To do this, we create a new data frame containing the data we want to use for our prediction and then apply the \texttt{R} function \textit{predict()} to predict the number of employer changes:
+
+<<>>=
+newdata <- data.frame(
+  age = 35,
+  gender = as.factor(1),
+  occupation = as.factor(0),
+  periodsincome = 11,
+  medianwage = as.factor(2)
+)
+
+predict_nchange <- predict(lm_3, newdata = newdata)
+predict_nchange
+@
+
+The expected number of employer changes for our specified person is $1.553282$.
+
+\subsection{Model Comparison}
+In this section we shall evaluate which one of our models, \texttt{lm\_1}, \texttt{lm\_2} or \texttt{lm\_3} is the most favorable one. To determine which one suits us best, we shall compare the three models using the AIC and Schwarz criterion and assess whether our decision can be made rather clearly or vaguely.
+
+\subsubsection{Akaike Information Criterion}
+The Akaike Information Criterion (AIC) estimates the relative quality of statistical models for a given set of data. It balances the goodness of fit (likelihood) against the complexity of the model (number of parameters). The formula is given by:
+$$
+AIC = 2k - 2\ln(\hat{L})
+$$
+where $k$ denotes the degrees of freedom (number of estimated coefficients, the intercept and the variance of the error term) and \(\hat{L}\) denotes the maximized value of the likelihood function for the model. Lower AIC values indicate a better model. To compare the AIC values for \texttt{lm\_1}, \texttt{lm\_2} and \texttt{lm\_3}, we will use the \textit{aictab()} function from the \textit{AICcmodavg} package in \texttt{R}:
+
+<<>>=
+cand.set <- list(lm_1, lm_2, lm_3)
+model_names <- c("lm_1", "lm_2", "lm_3")
+aictab(cand.set = cand.set, modnames = model_names)
+@
+
+The function automatically outputs the model with the lowest AIC value first, which in our case is \texttt{lm\_3}. Therefore, according to the AIC criterion, \texttt{lm\_3} is the preferred model. Note that the \texttt{AICcWt} (AIC Weights) column provides a normalized probability that a model is the best among the candidates. Here, the AIC suggests that there is an $\approx 80\%$ probability that \texttt{lm\_3} is the best model, compared to only a $20\%$ probability for \texttt{lm\_2} and $0\%$ for \texttt{lm\_1}.
+
+\subsubsection{Schwarz Criterion (BIC)}
+Next, we consider the Bayesian Information Criterion (BIC), also known as the Schwarz Criterion. The BIC applies a stricter penalty for model complexity ($k \ln(n)$) compared to the AIC ($2k$). This often leads the BIC to select simpler models when the sample size is large. The Bayesian Information Criterion is given by
+$$BIC = k \cdot ln(n) -2ln(\hat{L})$$
+where, again, $k$ denotes the degrees of freedom and \(\hat{L}\) denotes the maximized likelihood estimate. To compute the values we will use the \textit{bictab()} function from the \textit{AICcmodavg} package in \texttt{R}:
+
+<<>>=
+cand.set <- list(lm_1, lm_2, lm_3)
+model_names <- c("lm_1", "lm_2", "lm_3")
+bictab(cand.set = cand.set, modnames = model_names)
+@
+
+As already suspected, the BIC penalizes larger models more than the AIC which went so far as to yield a different result than the AIC. According to the BIC, \texttt{lm\_2} is the preferred model. The values for \texttt{BICWt} suggest that there is an $\approx 81\%$ probability that \texttt{lm\_2} is the best model, compared to only a $19\%$ probability for \texttt{lm\_3} and again $0\%$ for \texttt{lm\_1}.
+
+\subsubsection{Model Selection}
+The \texttt{Delta\_AIC} and \texttt{Delta\_BIC} values represent the difference in the criterion value relative to the best model. A general rule of thumb is that a $\Delta > 10$ indicates essentially no support for the model. 
+
+\begin{itemize}
+    \item \textbf{lm\_1 (Linear):} Across both criteria, \texttt{lm\_1} shows a massive Delta ($> 270$). This confirms overwhelmingly that the linear model is inadequate and that the quadratic term for income is absolutely necessary.
+    \item \textbf{lm\_2 vs. lm\_3:} The choice falls between \texttt{lm\_2} and \texttt{lm\_3} since their respective Deltas are comparatively small (\<3) in both criteria. The AIC favors the complex interaction model (\texttt{lm\_3}), while the BIC (focusing on simplicity) favors the more simple quadratic model (\texttt{lm\_2}) without the interaction effect. 
+\end{itemize}
+
+However, because the interaction term in \texttt{lm\_3} is statistically significant ($p < 0.05$) and adds a meaningful socioeconomic insight, namely that the gender gap significantly differs by occupation, we consider \texttt{lm\_3} the preferred model for explanation, even in light of the BIC penalty and the close choice between models.
+
+\subsection{Residual Diagnostics}
+In this final section, we will take a closer look at the residuals of our chosen model, \texttt{lm\_3} and check if the standard model assumptions are being observed or violated, whether or not the residuals are normally distributed and if we can trust the results of our model based on the residual diagnostics.
+
+\subsubsection{Diagnostic Plots}
+To formally assess the validity of our regression model \texttt{lm\_3}, we examine the following five standard diagnostic plots. These allow us to check the critical assumptions of Ordinary Least Squares (OLS) regression: linearity, homoskedasticity (constant variance), normality of the error term, and the presence of influential outliers.
+
+% Plot 1: Residuals vs Fitted
+<<resid_fitted, fig.cap="Residuals vs Fitted", echo=FALSE, out.width="70%", fig.align="center">>=
+plot(lm_3, which = 1)
+@
+
+% Plot 2: Normal Q-Q
+<<normal_qq, fig.cap="Normal Q-Q Plot", echo=FALSE, out.width="70%", fig.align="center">>=
+plot(lm_3, which = 2)
+@
+
+% Plot 3: Scale-Location
+<<scale_loc, fig.cap="Scale-Location Plot", echo=FALSE, out.width="70%", fig.align="center">>=
+plot(lm_3, which = 3)
+@
+
+% Plot 4: Residuals vs Leverage
+<<resid_lev, fig.cap="Residuals vs Leverage", echo=FALSE, out.width="70%", fig.align="center">>=
+plot(lm_3, which = 5)
+@
+
+<<resid_hist, fig.cap="Histogram of Residuals", echo=FALSE, out.width="70%", fig.align="center">>=
+hist(residuals(lm_3), breaks = 30, main = "Histogram of Residuals", 
+     xlab = "Residuals", col = "lightblue")
+@
+
+\subsubsection{Interpretation}
+Based on the plots in figures \ref{fig:resid_fitted} through \ref{fig:resid_hist}, we observe several problems regarding the standard OLS assumptions.
+
+\begin{enumerate}
+    \item \textbf{Residuals vs Fitted (Figure \ref{fig:resid_fitted}):} Ideally, residuals should be randomly scattered around the horizontal zero line. In our plot, the points form distinct, parallel sloping lines. This "striated" pattern occurs because the observed values ($y$) are integers ($0, 1, 2...$), while the predicted values ($\hat{y}$) are continuous. This confirms that a linear model is structurally mismatched for this count data, although the red trend line is relatively flat, suggesting the linear specification captures the mean relationship reasonably well.
+    
+    \item \textbf{Normal Q-Q (Figure \ref{fig:normal_qq}):} This plot checks the normality of the error term. If the errors were normally distributed, the points would follow the straight diagonal line. We see a light deviation, particularly in the upper tail (the points curve upwards). This indicates that the residuals are \textbf{not normally distributed} which could become problematic when it comes to reliably testing hypotheses regarding the significance of the coefficients (t-tests) and constructing confidence intervals, as the calculation of p-values theoretically relies on the assumption that the error terms follow a normal distribution.
+    
+    \item \textbf{Scale-Location (Figure \ref{fig:scale_loc}):} This plot checks for homoskedasticity. We see the same striated pattern as in the first plot. The red trend line slopes slightly upward, indicating that the variance of the residuals increases as the predicted values increase indicating that the residuals might be heteroskedastic.
+    
+\item \textbf{Residuals vs Leverage (Figure \ref{fig:resid_lev}):} This plot helps identify influential outliers. We look for points outside the dashed red "Cook's Distance" lines. In our plot, no points fall outside these boundaries (the Cook's distance lines are barely visible in the corners), meaning there are no single observations that disproportionately drive the model's results.
+
+    \item \textbf{Histogram of Residuals (Figure \ref{fig:resid_hist}):}
+    This plot confirms the results we obtained from the Q-Q-residuals plot, namely that the residuals are not normally distributed but are noticeably right-skewed.
+\end{enumerate}
+
+\subsubsection{Conclusion}
+The diagnostic plots reveal that the standard assumptions of normality and homoskedasticity are violated. While the model may still provide a useful approximation of the average effects (e.g., the direction of the gender gap), the standard errors and p-values should be interpreted with caution. A Generalized Linear Model (GLM) such as a Poisson or Negative Binomial regression could possibly be a more statistically appropriate choice for this dataset.
+
+
+
+\end{document}
