@@ -15,6 +15,6 @@ Written in **LaTeX** with **R** integration, the project covers:
 ## Tools
 * **Languages:** R, LaTeX
 * **Libraries:** `tidyverse`, `car`, `AICcmodavg`
-* **Data:** `change.csv` (Labor market count data)
+* **Data:** `change.csv` (Labor market data)
 
 **Author:** Bischoy Bert
