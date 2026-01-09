@@ -19,6 +19,9 @@ To run the analysis and compile the PDF make sure to install and run the followi
 ```r
 install.packages(c("tidyverse", "readxl", "knitr", "formatR", "tinytex"))
 ```
-To compile the PDF
+To compile the PDF, follow these steps:
+1.  Make sure your compiler is set to "knitr". To do that go to Tools-> Global Options-> Sweave-> Select: "Weave Rnw files using **knitr**" and "Typeset LaTeX into PDF using **pdfLaTeX**
+1.  Open `birthweight.Rnw` in RStudio.
+2.  Click **Compile PDF**
 
 **Author:** Bischoy Bert
